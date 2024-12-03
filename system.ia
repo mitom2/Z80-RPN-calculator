@@ -1,0 +1,272 @@
+.org #0
+DI
+JP @bootSequenceInit
+
+.include gpu.ia
+.include io.ia
+.include memory.ia
+.include math.ia
+
+.define boot_intro $C000
+.define boot_sequence_welcome_display_terminator #58
+
+@bootSequenceInit
+    ;Initialize MEM module
+    LD C,%2
+    LD B,C
+    MEM_system_os_switch_page
+    LD C,%3
+    LD B,C
+    MEM_system_os_switch_page
+
+    ;Initialize SP
+    LD SP,%0
+
+    ;Initialize I/O module
+    IO_disableInt
+    IO_beginConn
+    IO_cancelRead
+
+    ;Initialize GPU module
+    GPU_system_os_changeColor_black
+    GPU_clearScreen
+    LD BC,%0
+    LD DE,%0
+    GPU_system_os_setPointer
+
+    ;Load welcome screen from mass storage into RAM
+    LD A,%1
+    IO_setRetMdStorage
+    LD HL,%0
+    LD DE,%0
+    IO_selSectStorageReg
+    IO_beginRdStorage
+@bootSequenceStorageLoop
+    IO_checkStorage
+    CP %0
+    JP NZ,@bootSequenceStorageLoop
+
+    ;Data ready
+    LD HL,boot_intro
+    IO_readStorage
+@bootSequenceReadStorageLoop
+    IO_in
+    LD B,A
+    LD (HL),B
+    INC HL
+    LD A,boot_sequence_welcome_display_terminator
+    CP B
+    JP NZ,@bootSequenceReadStorageLoop
+    IO_cancelRead
+
+    ;Initialize keyboard
+    LD A,%1111
+    IO_selectHID
+
+    ;Initialize main loop
+    XOR A
+    PUSH AF
+@bootSequenceMainLoop
+    ;Display welcome screen
+    LD HL,boot_intro
+    GPU_system_os_changeColor_green
+@bootSequenceWelcomeDisplayLoop
+    LD B,(HL)
+    INC HL
+    GPU_system_os_drawChar
+    LD A,boot_sequence_welcome_display_terminator
+    CP B
+    JP NZ,@bootSequenceWelcomeDisplayLoop
+    LD BC,%0
+    LD E,%0
+    LD D,#38
+    GPU_system_os_setPointer
+    LD B,#62
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    EXX
+    LD L,%0
+    EXX
+
+    ;User input
+@bootSequenceWaitForUserInput
+    IO_checkDataHID
+    CP %0
+    JP NZ,@bootSequenceWaitForUserInput
+    IO_readHID
+    IO_in
+    IO_in
+    LD B,A
+    IO_cancelRead
+    LD A,B
+    CP #61
+    JP Z,@bootSequenceShowResult
+    LD A,B
+    CP #48
+    JP C,@bootSequenceOperatorEntered
+    CP #58
+    JP NC,@bootSequenceOperatorEntered
+    GPU_system_os_drawChar
+    LD H,A
+    EXX
+    LD A,%0
+    CP L
+    JP Z,@bootSequenceNewNumber
+    EXX
+    POP AF
+    LD B,#10
+    math_fast_mul_8
+    ADD A,H
+    SUB #48
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceNewNumber
+    LD L,%1
+    EXX
+    LD A,H
+    SUB #48
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceOperatorEntered
+    LD H,A
+    LD L,B
+    GPU_system_os_changeColor_yellow
+    LD A,H
+    EXX
+    LD L,%0
+    EXX
+    CP #43
+    JP Z,@bootSequenceAddition
+    LD H,A
+    GPU_system_os_changeColor_red
+    LD A,H
+    CP #45
+    JP Z,@bootSequenceSubtraction
+    LD H,A
+    GPU_system_os_changeColor_cyan
+    LD A,H
+    CP #42
+    JP Z,@bootSequenceMultiplication
+    LD H,A
+    GPU_system_os_changeColor_magenta
+    LD A,H
+    CP #47
+    JP Z,@bootSequenceDivision
+    LD B,#32
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceAddition
+    LD B,L
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    POP BC
+    POP DE
+    LD A,B
+    ADD A,D
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceSubtraction
+    POP BC
+    POP DE
+    LD E,B
+    LD B,L
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    LD B,E
+    LD A,D
+    SUB B
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceMultiplication
+    POP BC
+    POP DE
+    LD E,B
+    LD B,L
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    LD B,E
+    LD A,D
+    math_fast_mul_8
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceDivision
+    POP BC
+    POP DE
+    LD E,B
+    LD B,L
+    GPU_system_os_drawChar
+    GPU_system_os_changeColor_white
+    LD B,E
+    LD A,D
+    math_div_8
+    PUSH AF
+    JP @bootSequenceWaitForUserInput
+
+@bootSequenceShowResult
+    LD BC,%0
+    LD DE,%0
+    GPU_system_os_setPointer
+    GPU_system_os_changeColor_blue
+    LD B,#160
+    LD C,%0
+    LD D,#120
+    LD E,%0
+    GPU_system_os_setPointer
+    LD B,%11100000
+    LD C,%1
+    LD D,%01101000
+    LD E,%1
+    GPU_system_os_drawRectangle
+    GPU_system_os_changeColor_white
+    LD B,#200
+    LD C,%0
+    LD D,#230
+    LD E,%0
+    GPU_system_os_setPointer
+    LD B,#61
+    GPU_system_os_drawChar
+    POP AF
+    LD H,A
+    BIT 7,A
+    JP Z,@bootResultNotNegative
+    LD B,#45
+    GPU_system_os_drawChar
+    LD A,H
+    NEG
+@bootResultNotNegative
+    LD H,%0
+@bootResultLoop
+    LD B,#10
+    math_div_8
+    PUSH BC
+    INC H
+    CP %0
+    JP NZ,@bootResultLoop
+@bootResultDrawLoop
+    POP AF
+    ADD A,#48
+    LD B,A
+    GPU_system_os_drawChar
+    DEC H
+    JP NZ,@bootResultDrawLoop
+@bootResultWaitForUserInput
+    IO_checkDataHID
+    CP %0
+    JP NZ,@bootResultWaitForUserInput
+    IO_readHID
+    IO_in
+    IO_in
+    IO_cancelRead
+    LD BC,%0
+    LD DE,%0
+    GPU_system_os_setPointer
+    GPU_system_os_changeColor_black
+    GPU_clearScreen
+    JP @bootSequenceMainLoop
