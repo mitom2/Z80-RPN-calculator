@@ -7,9 +7,6 @@ JP @bootSequenceInit
 .include memory.ia
 .include math.ia
 
-.define boot_intro $C000
-.define boot_sequence_welcome_display_terminator #58
-
 @bootSequenceInit
     ;Initialize MEM module
     LD C,%2
@@ -34,31 +31,6 @@ JP @bootSequenceInit
     LD DE,%0
     GPU_system_os_setPointer
 
-    ;Load welcome screen from mass storage into RAM
-    LD A,%1
-    IO_setRetMdStorage
-    LD HL,%0
-    LD DE,%0
-    IO_selSectStorageReg
-    IO_beginRdStorage
-@bootSequenceStorageLoop
-    IO_checkStorage
-    CP %0
-    JP NZ,@bootSequenceStorageLoop
-
-    ;Data ready
-    LD HL,boot_intro
-    IO_readStorage
-@bootSequenceReadStorageLoop
-    IO_in
-    LD B,A
-    LD (HL),B
-    INC HL
-    LD A,boot_sequence_welcome_display_terminator
-    CP B
-    JP NZ,@bootSequenceReadStorageLoop
-    IO_cancelRead
-
     ;Initialize keyboard
     LD A,%1111
     IO_selectHID
@@ -67,22 +39,6 @@ JP @bootSequenceInit
     XOR A
     PUSH AF
 @bootSequenceMainLoop
-    ;Display welcome screen
-    LD HL,boot_intro
-    GPU_system_os_changeColor_green
-@bootSequenceWelcomeDisplayLoop
-    LD B,(HL)
-    INC HL
-    GPU_system_os_drawChar
-    LD A,boot_sequence_welcome_display_terminator
-    CP B
-    JP NZ,@bootSequenceWelcomeDisplayLoop
-    LD BC,%0
-    LD E,%0
-    LD D,#38
-    GPU_system_os_setPointer
-    LD B,#62
-    GPU_system_os_drawChar
     GPU_system_os_changeColor_white
     EXX
     LD L,%0
